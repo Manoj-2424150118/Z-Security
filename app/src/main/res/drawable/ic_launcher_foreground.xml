@@ -1,0 +1,30 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Glowing Outer Shield Border -->
+    <path
+        android:pathData="M54,18 C71,18 84,23 84,23 C84,23 84,50 84,58 C84,76 71,91 54,98 C37,91 24,76 24,58 C24,50 24,23 24,23 C24,23 37,18 54,18 Z"
+        android:strokeColor="#1A00E5FF"
+        android:strokeWidth="5" />
+
+    <!-- Inner Shield Border -->
+    <path
+        android:pathData="M54,22 C69,22 80,27 80,27 C80,27 80,50 80,58 C80,74 69,87 54,93 C39,87 28,74 28,58 C28,50 28,27 28,27 C28,27 39,22 54,22 Z"
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="3.5"
+        android:fillColor="#0A0D14" />
+
+    <!-- Stylized "Z" character inside shield -->
+    <path
+        android:pathData="M38,40 H56 V46 L43,64 H56 V70 H38 V64 L51,46 H38 V40 Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Stylized "+" character inside shield -->
+    <path
+        android:pathData="M64,44 H68 V51 H75 V55 H68 V62 H64 V55 H57 V51 H64 V44 Z"
+        android:fillColor="#00E5FF" />
+
+</vector>
