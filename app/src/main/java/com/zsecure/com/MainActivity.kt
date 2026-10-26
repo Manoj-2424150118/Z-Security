@@ -3,7 +3,6 @@ package com.zsecure.com
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -11,6 +10,7 @@ import androidx.fragment.app.FragmentActivity
 import com.zsecure.com.data.DatabaseProvider
 import com.zsecure.com.ui.screens.MainContainer
 import com.zsecure.com.ui.screens.UnlockScreen
+import com.zsecure.com.ui.theme.ZSecureTheme
 import com.zsecure.com.utils.CryptoUtils
 
 class MainActivity : FragmentActivity() {
@@ -55,10 +55,10 @@ class MainActivity : FragmentActivity() {
         }
 
         setContent {
-            MaterialTheme {
+            ZSecureTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.background
                 ) {
                     var isUnlocked by isUnlockedState
                     
