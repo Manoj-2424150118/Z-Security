@@ -23,11 +23,18 @@ interface TwoFactorDao {
     @Query("SELECT * FROM two_factor_accounts ORDER BY issuer ASC, name ASC")
     fun getAllAccounts(): Flow<List<TwoFactorAccount>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // IGNORE (not REPLACE): imported accounts always arrive with id = 0, so
+    // REPLACE could never match an existing row and re-scanning the same QR
+    // duplicated every account. The unique (issuer, name, secret) index plus
+    // IGNORE makes re-imports idempotent.
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(account: TwoFactorAccount)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(accounts: List<TwoFactorAccount>)
+
+    @Query("UPDATE two_factor_accounts SET counter = :counter WHERE id = :id")
+    suspend fun updateCounter(id: Int, counter: Long)
 
     @Delete
     suspend fun delete(account: TwoFactorAccount)

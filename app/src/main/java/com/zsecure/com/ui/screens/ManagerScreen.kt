@@ -164,16 +164,22 @@ fun ManagerScreen(
                 var issuer = uri.getQueryParameter("issuer") ?: ""
                 var name = uri.path?.removePrefix("/") ?: ""
                 if (name.contains(":")) {
-                    val parts = name.split(":")
+                    val parts = name.split(":", limit = 2)
                     if (issuer.isEmpty()) issuer = parts[0]
-                    name = parts[1]
+                    if (parts.size > 1) name = parts[1]
                 }
-                
+
                 if (content.startsWith("otpauth-migration://") || !secret.isNullOrEmpty()) {
+                    val algorithmParam = uri.getQueryParameter("algorithm")?.uppercase()
                     redirectAccountToImport = TwoFactorAccount(
                         issuer = issuer.ifEmpty { "Service" },
                         name = name.ifEmpty { "User" },
-                        secret = secret ?: content // For migration URLs, save whole url temporarily
+                        secret = secret ?: content, // For migration URLs, save whole url temporarily
+                        type = if (content.startsWith("otpauth://hotp/")) "HOTP" else "TOTP",
+                        algorithm = if (algorithmParam in com.zsecure.com.utils.TotpUtils.SUPPORTED_ALGORITHMS) algorithmParam!! else "SHA1",
+                        digits = uri.getQueryParameter("digits")?.toIntOrNull()?.takeIf { it in 6..8 } ?: 6,
+                        periodSec = uri.getQueryParameter("period")?.toIntOrNull()?.takeIf { it > 0 } ?: 30,
+                        counter = uri.getQueryParameter("counter")?.toLongOrNull() ?: 0
                     )
                 } else {
                     Toast.makeText(context, "Invalid 2FA QR content", Toast.LENGTH_SHORT).show()
@@ -323,11 +329,16 @@ fun ManagerScreen(
             }
 
             val filename = "AegisPass_Vault_Backup.csv"
-            context.openFileOutput(filename, Context.MODE_PRIVATE).use {
-                it.write(csvBuilder.toString().toByteArray())
-            }
+            // Export into the CACHE dir, not filesDir: a plaintext CSV of the
+            // whole vault previously sat in internal storage forever. Cache
+            // files are transient (the system can purge them) and we delete
+            // any stale copy — including the legacy filesDir one — first.
+            File(context.filesDir, filename).delete()
+            val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
+            val file = File(exportDir, filename)
+            file.delete()
+            file.writeBytes(csvBuilder.toString().toByteArray())
 
-            val file = File(context.filesDir, filename)
             val uri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",

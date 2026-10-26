@@ -75,11 +75,13 @@ fun AuthenticatorScreen(
     var showCameraScanner by remember { mutableStateOf(false) }
     var showMigrationDialog by remember { mutableStateOf(false) }
 
-    // Run active loop for 2FA timer
+    // Run active loop for 2FA timer (1 s tick: codes change at most once per
+    // second; the previous 200 ms tick recomposed the whole list and re-ran
+    // every HMAC 5x per second for no benefit)
     LaunchedEffect(Unit) {
         while (true) {
             currentTimeMs = System.currentTimeMillis()
-            delay(200)
+            delay(1000)
         }
     }
 
@@ -88,8 +90,17 @@ fun AuthenticatorScreen(
 
     // Copy to clipboard helper
     fun copyCode(account: TwoFactorAccount) {
-        val codeSpaced = TotpUtils.generateTotp(account.secret, currentTimeMs)
-        val rawCode = codeSpaced.replace(" ", "")
+        val raw = if (account.type == "HOTP") {
+            TotpUtils.generateHotp(account.secret, account.counter, account.digits, account.algorithm)
+        } else {
+            TotpUtils.generateTotp(account.secret, currentTimeMs, account.digits, account.periodSec, account.algorithm)
+        }
+        if (raw == null) {
+            Toast.makeText(context, "Invalid key for ${account.issuer} — code unavailable", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val codeSpaced = TotpUtils.formatCode(raw)
+        val rawCode = raw
         val clip = ClipData.newPlainText("2FA Code", rawCode)
         clipboard.setPrimaryClip(clip)
         Toast.makeText(context, "Code copied: $codeSpaced", Toast.LENGTH_SHORT).show()
@@ -133,7 +144,11 @@ fun AuthenticatorScreen(
                     TwoFactorAccount(
                         issuer = map["issuer"] ?: "Imported",
                         name = map["name"] ?: "Account",
-                        secret = map["secret"] ?: ""
+                        secret = map["secret"] ?: "",
+                        type = map["type"] ?: "TOTP",
+                        algorithm = map["algorithm"] ?: "SHA1",
+                        digits = map["digits"]?.toIntOrNull() ?: 6,
+                        counter = map["counter"]?.toLongOrNull() ?: 0
                     )
                 }.filter { it.secret.isNotEmpty() }
                 
@@ -149,18 +164,22 @@ fun AuthenticatorScreen(
     fun handleQrContent(content: String) {
         if (content.startsWith("otpauth-migration://")) {
             handleMigrationUrl(content)
-        } else if (content.startsWith("otpauth://totp/")) {
-            // standard otpauth://totp/Issuer:Account?secret=XXX&issuer=Issuer
+        } else if (content.startsWith("otpauth://totp/") || content.startsWith("otpauth://hotp/")) {
+            // standard otpauth://totp/Issuer:Account?secret=XXX&issuer=Issuer&algorithm=SHA256&digits=8&period=60
+            //          otpauth://hotp/Issuer:Account?secret=XXX&counter=0
             try {
                 val uri = Uri.parse(content)
+                val isHotp = content.startsWith("otpauth://hotp/")
                 val secret = uri.getQueryParameter("secret")
                 var issuer = uri.getQueryParameter("issuer") ?: ""
                 var name = uri.path?.removePrefix("/") ?: ""
-                
+
                 if (name.contains(":")) {
-                    val parts = name.split(":")
+                    // limit = 2: account names may themselves contain colons,
+                    // which the old split(":") + parts[1] silently truncated
+                    val parts = name.split(":", limit = 2)
                     if (issuer.isEmpty()) issuer = parts[0]
-                    name = parts[1]
+                    if (parts.size > 1) name = parts[1]
                 }
 
                 if (secret.isNullOrEmpty()) {
@@ -168,12 +187,25 @@ fun AuthenticatorScreen(
                     return
                 }
 
+                // Honour the issuer's own OTP parameters instead of assuming
+                // SHA1 / 6 digits / 30 s (non-default accounts showed wrong codes)
+                val algorithmParam = uri.getQueryParameter("algorithm")?.uppercase()
+                val algorithm = if (algorithmParam in TotpUtils.SUPPORTED_ALGORITHMS) algorithmParam!! else "SHA1"
+                val digits = uri.getQueryParameter("digits")?.toIntOrNull()?.takeIf { it in 6..8 } ?: 6
+                val period = uri.getQueryParameter("period")?.toIntOrNull()?.takeIf { it > 0 } ?: 30
+                val counter = uri.getQueryParameter("counter")?.toLongOrNull() ?: 0
+
                 coroutineScope.launch {
                     twoFactorDao.insert(
                         TwoFactorAccount(
                             issuer = issuer.ifEmpty { "Service" },
                             name = name.ifEmpty { "User" },
-                            secret = secret
+                            secret = secret,
+                            type = if (isHotp) "HOTP" else "TOTP",
+                            algorithm = algorithm,
+                            digits = digits,
+                            periodSec = period,
+                            counter = counter
                         )
                     )
                     Toast.makeText(context, "Imported: ${issuer.ifEmpty { "Service" }} ($name)", Toast.LENGTH_SHORT).show()
@@ -244,7 +276,7 @@ fun AuthenticatorScreen(
                             color = Color.White
                         )
                         Text(
-                            text = "Codes regenerate automatically every 30 seconds.",
+                            text = "Codes regenerate automatically. Each issuer's own time step is shown on its card.",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.White.copy(alpha = 0.6f)
                         )
@@ -301,9 +333,17 @@ fun AuthenticatorScreen(
                         .weight(1f),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(accounts) { account ->
-                        val code = TotpUtils.generateTotp(account.secret, currentTimeMs)
-                        
+                    items(accounts, key = { it.id }) { account ->
+                        val rawCode = if (account.type == "HOTP") {
+                            TotpUtils.generateHotp(account.secret, account.counter, account.digits, account.algorithm)
+                        } else {
+                            TotpUtils.generateTotp(account.secret, currentTimeMs, account.digits, account.periodSec, account.algorithm)
+                        }
+                        val code = rawCode?.let { TotpUtils.formatCode(it) } ?: "Invalid key"
+                        val secsLeft = if (account.periodSec > 0) {
+                            account.periodSec - ((currentTimeMs / 1000) % account.periodSec).toInt()
+                        } else 0
+
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -338,8 +378,27 @@ fun AuthenticatorScreen(
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Bold
                                         ),
-                                        color = Color(0xFF00E5FF)
+                                        color = if (rawCode == null) Color(0xFFE57373) else Color(0xFF00E5FF)
                                     )
+                                    Text(
+                                        text = if (account.type == "HOTP") {
+                                            "Counter-based • ${account.algorithm} • counter ${account.counter} — use once, then tap Next"
+                                        } else {
+                                            "Refreshes in ${secsLeft}s • ${account.algorithm} • ${account.digits} digits"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.45f)
+                                    )
+                                    if (account.type == "HOTP") {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        TextButton(onClick = {
+                                            coroutineScope.launch {
+                                                twoFactorDao.updateCounter(account.id, account.counter + 1)
+                                            }
+                                        }) {
+                                            Text("Next code", color = Color(0xFF00E5FF))
+                                        }
+                                    }
                                 }
                                 
                                 Row {
@@ -607,6 +666,27 @@ fun CameraScannerDialog(
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
     var previewView: PreviewView? by remember { mutableStateOf(null) }
 
+    // One scanner for the dialog's lifetime, released on dismiss. The old code
+    // created a new ML Kit client inside every (re)bind and never closed any
+    // of them, and never unbound the camera use cases either.
+    val scanner = remember {
+        BarcodeScanning.getClient(
+            BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .build()
+        )
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                cameraProviderFuture.get().unbindAll()
+            } catch (e: Exception) {
+                // provider may not be ready; nothing to release
+            }
+            scanner.close()
+        }
+    }
+
     // Control scanning debounce
     var isScanned by remember { mutableStateOf(false) }
 
@@ -625,11 +705,6 @@ fun CameraScannerDialog(
             val imageAnalysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
-
-            val options = BarcodeScannerOptions.Builder()
-                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                .build()
-            val scanner = BarcodeScanning.getClient(options)
 
             imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(context)) { imageProxy ->
                 val mediaImage = imageProxy.image
