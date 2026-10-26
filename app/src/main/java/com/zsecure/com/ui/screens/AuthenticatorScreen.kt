@@ -44,6 +44,9 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.zsecure.com.data.DatabaseProvider
 import com.zsecure.com.data.TwoFactorAccount
+import com.zsecure.com.ui.components.EmptyState
+import com.zsecure.com.ui.components.InitialAvatar
+import com.zsecure.com.ui.theme.Spacing
 import com.zsecure.com.utils.GoogleAuthDecoder
 import com.zsecure.com.utils.TotpUtils
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
@@ -56,6 +59,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.URLDecoder
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuthenticatorScreen(
     activity: FragmentActivity,
@@ -74,6 +78,8 @@ fun AuthenticatorScreen(
     var showManualDialog by remember { mutableStateOf(false) }
     var showCameraScanner by remember { mutableStateOf(false) }
     var showMigrationDialog by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<TwoFactorAccount?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // Run active loop for 2FA timer (1 s tick: codes change at most once per
     // second; the previous 200 ms tick recomposed the whole list and re-ran
@@ -96,15 +102,19 @@ fun AuthenticatorScreen(
             TotpUtils.generateTotp(account.secret, currentTimeMs, account.digits, account.periodSec, account.algorithm)
         }
         if (raw == null) {
-            Toast.makeText(context, "Invalid key for ${account.issuer} — code unavailable", Toast.LENGTH_SHORT).show()
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar("Invalid key for ${account.issuer} — code unavailable")
+            }
             return
         }
         val codeSpaced = TotpUtils.formatCode(raw)
         val rawCode = raw
         val clip = ClipData.newPlainText("2FA Code", rawCode)
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(context, "Code copied: $codeSpaced", Toast.LENGTH_SHORT).show()
-        
+        coroutineScope.launch {
+            snackbarHostState.showSnackbar("Code copied: $codeSpaced — clipboard clears in 45 seconds")
+        }
+
         coroutineScope.launch {
             delay(45000)
             try {
@@ -255,57 +265,50 @@ fun AuthenticatorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header timer circular card
-            // Header timer circular card
+            // Header card — global 30-second cycle ring
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF131A26)),
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                ),
+                shape = MaterialTheme.shapes.large,
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(Spacing.md),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Time-Based OTP Codes",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            text = "One-time codes",
+                            style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = "Codes regenerate automatically. Each issuer's own time step is shown on its card.",
+                            text = "Tap any code to copy it. Each account's own time step is shown on its card.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.6f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Spacer(modifier = Modifier.width(Spacing.md))
 
-                    // Countdown Ring Animation
+                    // Countdown ring for the standard 30 s cycle
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier.size(54.dp)
                     ) {
-                        Canvas(modifier = Modifier.size(54.dp)) {
-                            drawCircle(
-                                color = Color.White.copy(alpha = 0.05f),
-                                style = Stroke(width = 4.dp.toPx())
-                            )
-                            drawArc(
-                                color = if (remainingSecs <= 5) Color(0xFFE57373) else Color(0xFF00E5FF),
-                                startAngle = -90f,
-                                sweepAngle = timerProgress * 360f,
-                                useCenter = false,
-                                style = Stroke(width = 4.dp.toPx())
-                            )
-                        }
+                        CircularProgressIndicator(
+                            progress = { timerProgress },
+                            modifier = Modifier.size(54.dp),
+                            color = if (remainingSecs <= 5) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            strokeWidth = 4.dp,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
                         Text(
                             text = remainingSecs.toString(),
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                            color = if (remainingSecs <= 5) Color(0xFFE57373) else Color.White
+                            color = if (remainingSecs <= 5) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -313,19 +316,16 @@ fun AuthenticatorScreen(
 
             // List of Accounts
             if (accounts.isEmpty()) {
-                Box(
+                EmptyState(
+                    icon = Icons.Default.Timer,
+                    title = "No 2FA accounts yet",
+                    message = "Add the accounts you protect with two-factor authentication and their codes will appear here.",
+                    actionLabel = "Add an account",
+                    onAction = { showAddMenu = true },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "No 2FA Accounts\nTap '+' to scan a QR code or add a secret key.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        textAlign = TextAlign.Center,
-                        color = Color.White.copy(alpha = 0.4f)
-                    )
-                }
+                        .weight(1f)
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier
@@ -340,6 +340,7 @@ fun AuthenticatorScreen(
                             TotpUtils.generateTotp(account.secret, currentTimeMs, account.digits, account.periodSec, account.algorithm)
                         }
                         val code = rawCode?.let { TotpUtils.formatCode(it) } ?: "Invalid key"
+                        val period = if (account.periodSec > 0) account.periodSec else 30
                         val secsLeft = if (account.periodSec > 0) {
                             account.periodSec - ((currentTimeMs / 1000) % account.periodSec).toInt()
                         } else 0
@@ -347,47 +348,51 @@ fun AuthenticatorScreen(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .animateItem()
                                 .clickable { copyCode(account) },
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF131A26)),
-                            shape = RoundedCornerShape(14.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainer
+                            ),
+                            shape = MaterialTheme.shapes.large,
+                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
+                                    .padding(Spacing.md),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                InitialAvatar(name = account.issuer)
+                                Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = account.issuer,
                                         style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                                        maxLines = 1
                                     )
                                     Text(
                                         text = account.name,
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = Color.White.copy(alpha = 0.5f)
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
                                     )
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(6.dp))
                                     Text(
                                         text = code,
                                         style = MaterialTheme.typography.headlineMedium.copy(
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Bold
                                         ),
-                                        color = if (rawCode == null) Color(0xFFE57373) else Color(0xFF00E5FF)
+                                        color = if (rawCode == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                                     )
                                     Text(
                                         text = if (account.type == "HOTP") {
                                             "Counter-based • ${account.algorithm} • counter ${account.counter} — use once, then tap Next"
                                         } else {
-                                            "Refreshes in ${secsLeft}s • ${account.algorithm} • ${account.digits} digits"
+                                            "${account.algorithm} • ${account.digits} digits"
                                         },
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = Color.White.copy(alpha = 0.45f)
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     if (account.type == "HOTP") {
                                         Spacer(modifier = Modifier.height(6.dp))
@@ -396,22 +401,43 @@ fun AuthenticatorScreen(
                                                 twoFactorDao.updateCounter(account.id, account.counter + 1)
                                             }
                                         }) {
-                                            Text("Next code", color = Color(0xFF00E5FF))
+                                            Text("Next code")
                                         }
                                     }
                                 }
-                                
-                                Row {
-                                    IconButton(onClick = { copyCode(account) }) {
-                                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy Code", tint = Color.White.copy(alpha = 0.7f))
+
+                                // Per-account countdown ring (TOTP only)
+                                if (account.type != "HOTP") {
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.size(44.dp)
+                                    ) {
+                                        CircularProgressIndicator(
+                                            progress = { secsLeft / period.toFloat() },
+                                            modifier = Modifier.size(44.dp),
+                                            color = if (secsLeft <= 5) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                            strokeWidth = 3.dp,
+                                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                        )
+                                        Text(
+                                            text = secsLeft.toString(),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (secsLeft <= 5) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
-                                    IconButton(onClick = {
-                                        coroutineScope.launch {
-                                            twoFactorDao.delete(account)
-                                            Toast.makeText(context, "Deleted: ${account.issuer}", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete Account", tint = Color(0xFFD32F2F))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+
+                                Column {
+                                    IconButton(onClick = { copyCode(account) }) {
+                                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy code for ${account.issuer}")
+                                    }
+                                    IconButton(onClick = { pendingDelete = account }) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "Delete ${account.issuer} account",
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
                                     }
                                 }
                             }
@@ -420,83 +446,114 @@ fun AuthenticatorScreen(
                 }
             }
         }
+
+        // Copy feedback
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(start = Spacing.screen, end = Spacing.screen, bottom = 88.dp)
+        )
 
         // Floating Action Button
         FloatingActionButton(
             onClick = { showAddMenu = true },
-            containerColor = Color(0xFF0D6EFD),
-            contentColor = Color.White,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(24.dp)
+                .padding(Spacing.lg)
         ) {
-            Icon(Icons.Default.Add, contentDescription = "Add Account")
+            Icon(Icons.Default.Add, contentDescription = "Add account")
         }
 
-        // Bottom sheet options menu
+        // Add-account bottom sheet
         if (showAddMenu) {
-            Dialog(onDismissRequest = { showAddMenu = false }) {
-                Card(
+            ModalBottomSheet(
+                onDismissRequest = { showAddMenu = false }
+            ) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    shape = RoundedCornerShape(12.dp)
+                        .padding(bottom = Spacing.lg)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Add Authenticator Account",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        ListItem(
-                            headlineContent = { Text("Scan QR Code") },
-                            leadingContent = { Icon(Icons.Default.CropFree, contentDescription = null) },
-                            modifier = Modifier.clickable {
-                                showAddMenu = false
-                                showCameraScanner = true
-                            }
-                        )
-                        ListItem(
-                            headlineContent = { Text("Choose from Gallery") },
-                            leadingContent = { Icon(Icons.Default.Photo, contentDescription = null) },
-                            modifier = Modifier.clickable {
-                                showAddMenu = false
-                                DatabaseProvider.isLaunchingIntent = true
-                                galleryLauncher.launch("image/*")
-                            }
-                        )
-                        ListItem(
-                            headlineContent = { Text("Enter Key Manually") },
-                            leadingContent = { Icon(Icons.Default.Edit, contentDescription = null) },
-                            modifier = Modifier.clickable {
-                                showAddMenu = false
-                                showManualDialog = true
-                            }
-                        )
-                        ListItem(
-                            headlineContent = { Text("Import Google Authenticator Migration") },
-                            leadingContent = { Icon(Icons.Default.CloudDownload, contentDescription = null) },
-                            modifier = Modifier.clickable {
-                                showAddMenu = false
-                                showMigrationDialog = true
-                            }
-                        )
-
-                        TextButton(
-                            onClick = { showAddMenu = false },
-                            modifier = Modifier.align(Alignment.End)
-                        ) {
-                            Text("Cancel")
+                    Text(
+                        text = "Add an account",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm)
+                    )
+                    ListItem(
+                        headlineContent = { Text("Scan QR code") },
+                        supportingContent = { Text("Use the camera to scan a setup code") },
+                        leadingContent = { Icon(Icons.Default.CropFree, contentDescription = null) },
+                        modifier = Modifier.clickable {
+                            showAddMenu = false
+                            showCameraScanner = true
                         }
-                    }
+                    )
+                    ListItem(
+                        headlineContent = { Text("Choose from gallery") },
+                        supportingContent = { Text("Pick a screenshot of a QR code") },
+                        leadingContent = { Icon(Icons.Default.Photo, contentDescription = null) },
+                        modifier = Modifier.clickable {
+                            showAddMenu = false
+                            DatabaseProvider.isLaunchingIntent = true
+                            galleryLauncher.launch("image/*")
+                        }
+                    )
+                    ListItem(
+                        headlineContent = { Text("Enter key manually") },
+                        supportingContent = { Text("Type the setup key from the website") },
+                        leadingContent = { Icon(Icons.Default.Edit, contentDescription = null) },
+                        modifier = Modifier.clickable {
+                            showAddMenu = false
+                            showManualDialog = true
+                        }
+                    )
+                    ListItem(
+                        headlineContent = { Text("Import from Google Authenticator") },
+                        supportingContent = { Text("Paste an otpauth-migration link") },
+                        leadingContent = { Icon(Icons.Default.CloudDownload, contentDescription = null) },
+                        modifier = Modifier.clickable {
+                            showAddMenu = false
+                            showMigrationDialog = true
+                        }
+                    )
                 }
             }
+        }
+
+        // Delete confirmation — removing a 2FA account can lock you out of it
+        if (pendingDelete != null) {
+            val target = pendingDelete!!
+            AlertDialog(
+                onDismissRequest = { pendingDelete = null },
+                icon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                title = { Text("Delete this account?") },
+                text = {
+                    Text("The 2FA account for ${target.issuer} (${target.name}) will be removed. If you haven't disabled 2FA on that service or saved the setup key, you could be locked out of it.")
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                twoFactorDao.delete(target)
+                                pendingDelete = null
+                                snackbarHostState.showSnackbar("Deleted: ${target.issuer}")
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        )
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDelete = null }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
 
         // Dialog for Manual Entry
