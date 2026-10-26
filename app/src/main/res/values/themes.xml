@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Framework Material parent: the app has no AppCompat dependency, so the
-         previous Theme.AppCompat parent could not be resolved at build time. -->
+         previous Theme.AppCompat parent could not be resolved at build time.
+         Window colours match the Compose brand background (ZSecureTheme,
+         DarkBackground #0A0E17) so the pre-Compose window never flashes white. -->
     <style name="Theme.AegisPass" parent="android:Theme.Material.NoActionBar">
-        <!-- Customize your theme here. -->
-        <item name="android:statusBarColor">#121212</item>
-        <item name="android:navigationBarColor">#121212</item>
+        <item name="android:statusBarColor">#0A0E17</item>
+        <item name="android:navigationBarColor">#0A0E17</item>
+        <item name="android:windowBackground">#0A0E17</item>
     </style>
 </resources>
