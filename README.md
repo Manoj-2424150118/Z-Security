@@ -1,5 +1,9 @@
 # Z+ Secure — Encrypted Vault & Authenticator
 
+[![Latest version](https://img.shields.io/badge/latest-v1.1.0-brightgreen)](https://github.com/Manoj-2424150118/Z-Security/releases/tag/v1.1.0) [![Download the APK](https://img.shields.io/badge/download-Z--Security--v1.1.0.apk-blue)](https://github.com/Manoj-2424150118/Z-Security/releases/download/v1.1.0/Z-Security-v1.1.0.apk)
+
+**Latest version: v1.1.0** — see the [release page](https://github.com/Manoj-2424150118/Z-Security/releases/tag/v1.1.0) for the APK and full notes.
+
 A fully offline Android password vault and two-factor authenticator. Everything is stored locally in a SQLCipher-encrypted database — no account, no cloud, no tracking. The app doesn't even request the Internet permission; the only permissions it asks for are Camera (for scanning QR codes) and Biometrics.
 
 ## ✨ What's new in v1.1.0
