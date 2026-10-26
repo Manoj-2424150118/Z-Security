@@ -5,7 +5,7 @@ A fully offline Android password vault and two-factor authenticator. Everything 
 ## 📲 Download & Install
 
 1. Go to the [**Releases**](https://github.com/Manoj-2424150118/Z-Security/releases) page.
-2. Download `Z-Security-v1.0.0.apk` from the latest release.
+2. Download `Z-Security-v1.0.1.apk` from the latest release.
 3. Open the APK on your Android phone and allow "Install from this source" when prompted (Android blocks sideloading by default).
 4. Requires Android 8.0 (API 26) or newer. No account and no internet needed — everything is stored locally and encrypted.
 

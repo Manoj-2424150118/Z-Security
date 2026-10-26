@@ -162,15 +162,12 @@ fun UnlockScreen(
                     // iteration count, rekey the vault, and store the new
                     // verifier. If anything fails, fall back to unlocking with
                     // the old key — migration is retried on the next unlock.
-                    try {
-                        val migrationChars = password.toCharArray()
-                        val upgradedKey = CryptoUtils.deriveKey(migrationChars, salt, CryptoUtils.ITERATIONS)
-                        val upgradedVerifier = CryptoUtils.deriveKey(migrationChars, verSalt, CryptoUtils.ITERATIONS)
-                        CryptoUtils.clearArray(migrationChars)
+                    val migrationChars = password.toCharArray()
+                    val upgradedKey = CryptoUtils.deriveKey(migrationChars, salt, CryptoUtils.ITERATIONS)
+                    val upgradedVerifier = CryptoUtils.deriveKey(migrationChars, verSalt, CryptoUtils.ITERATIONS)
+                    CryptoUtils.clearArray(migrationChars)
 
-                        DatabaseProvider.initialize(activity, derivedKey) // open with the old key
-                        DatabaseProvider.rekey(activity, upgradedKey)
-
+                    fun healPrefs() {
                         sharedPrefs.edit()
                             .putString(
                                 "key_hash_check",
@@ -178,11 +175,30 @@ fun UnlockScreen(
                             )
                             .putInt("pbkdf2_iterations", CryptoUtils.ITERATIONS)
                             .commit()
+                    }
 
+                    try {
+                        DatabaseProvider.initialize(activity, derivedKey) // open with the old key
+                        DatabaseProvider.rekey(activity, upgradedKey)
+                        healPrefs()
                         onUnlocked(upgradedKey)
                         return
                     } catch (e: Exception) {
-                        // fall through to a normal unlock with the old key
+                        // The vault may ALREADY be on the upgraded key: if the
+                        // process died after a previous attempt's rekey but
+                        // before its prefs commit, the stored count/verifier
+                        // still describe the old key while the DB does not.
+                        // Heal by opening with the upgraded key and rewriting
+                        // the prefs (verification above used the same
+                        // password, so this cannot be triggered by a wrong one).
+                        try {
+                            DatabaseProvider.initialize(activity, upgradedKey)
+                            healPrefs()
+                            onUnlocked(upgradedKey)
+                            return
+                        } catch (e2: Exception) {
+                            // fall through to a normal unlock with the old key
+                        }
                     }
                 }
                 onUnlocked(derivedKey)
