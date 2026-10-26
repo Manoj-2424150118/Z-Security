@@ -12,11 +12,13 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -28,11 +30,16 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.zsecure.com.ui.components.EmptyState
+import com.zsecure.com.ui.components.InitialAvatar
+import com.zsecure.com.ui.theme.Spacing
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.fragment.app.FragmentActivity
@@ -70,6 +77,8 @@ fun ManagerScreen(
     var editingCredential by remember { mutableStateOf<Credential?>(null) }
     var viewingQrCode by remember { mutableStateOf<String?>(null) }
     var showCameraScanner by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<Credential?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     
     // Redirect dialogue state
     var redirectAccountToImport by remember { mutableStateOf<TwoFactorAccount?>(null) }
@@ -80,12 +89,15 @@ fun ManagerScreen(
         it.notes.contains(searchQuery, ignoreCase = true)
     }
 
-    // Copy helper
+    // Copy helper — immediate feedback via Snackbar; the 45-second
+    // auto-clear below is the security behaviour and is unchanged.
     fun copyToClipboard(label: String, value: String) {
         val clip = ClipData.newPlainText(label, value)
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(context, "$label copied to clipboard!", Toast.LENGTH_SHORT).show()
-        
+        coroutineScope.launch {
+            snackbarHostState.showSnackbar("$label copied — clipboard clears in 45 seconds")
+        }
+
         coroutineScope.launch {
             delay(45000)
             try {
@@ -360,60 +372,70 @@ fun ManagerScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(Spacing.screen),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md)
         ) {
-            // Search Bar & Import/Export Row
-            // Search Bar & Import/Export Row
+            // Search field + vault actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
             ) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search Vault...") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White.copy(alpha = 0.5f)) },
+                    placeholder = { Text("Search your vault") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = if (searchQuery.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear search")
+                            }
+                        }
+                    } else null,
                     singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF00E5FF),
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                        focusedPlaceholderColor = Color.White.copy(alpha = 0.4f),
-                        unfocusedPlaceholderColor = Color.White.copy(alpha = 0.4f)
-                    ),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.weight(1f)
                 )
 
-                IconButton(onClick = { 
+                IconButton(onClick = {
                     DatabaseProvider.isLaunchingIntent = true
-                    csvImportLauncher.launch("text/*") 
+                    csvImportLauncher.launch("text/*")
                 }) {
-                    Icon(Icons.Default.Input, contentDescription = "Import CSV", tint = Color.White.copy(alpha = 0.7f))
+                    Icon(Icons.Default.Input, contentDescription = "Import CSV")
                 }
                 IconButton(onClick = { exportCsv() }) {
-                    Icon(Icons.Default.Share, contentDescription = "Export CSV", tint = Color.White.copy(alpha = 0.7f))
+                    Icon(Icons.Default.Share, contentDescription = "Export CSV")
                 }
                 IconButton(onClick = { showCameraScanner = true }) {
-                    Icon(Icons.Default.CropFree, contentDescription = "Scan QR", tint = Color.White.copy(alpha = 0.7f))
+                    Icon(Icons.Default.CropFree, contentDescription = "Scan QR code")
                 }
             }
 
             // Credentials list
             if (filteredList.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (searchQuery.isEmpty()) "Your Vault is Empty\nTap '+' to add a password credential." else "No matches found.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        textAlign = TextAlign.Center,
-                        color = Color.White.copy(alpha = 0.4f)
+                if (searchQuery.isEmpty()) {
+                    EmptyState(
+                        icon = Icons.Default.FolderOpen,
+                        title = "Your vault is empty",
+                        message = "Store your first login and it will be encrypted on this device, ready whenever you need it.",
+                        actionLabel = "Add a credential",
+                        onAction = { showAddDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    )
+                } else {
+                    EmptyState(
+                        icon = Icons.Default.SearchOff,
+                        title = "No matches",
+                        message = "Nothing in your vault matches \"$searchQuery\".",
+                        actionLabel = "Clear search",
+                        onAction = { searchQuery = "" },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
                     )
                 }
             } else {
@@ -423,106 +445,102 @@ fun ManagerScreen(
                         .weight(1f),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(filteredList) { credential ->
+                    items(filteredList, key = { it.id }) { credential ->
                         var passwordVisible by remember { mutableStateOf(false) }
-                        
+                        val displayName = cleanAndroidUri(credential.website)
+
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF131A26)),
-                            shape = RoundedCornerShape(14.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .animateItem(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainer
+                            ),
+                            shape = MaterialTheme.shapes.large,
+                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
+                            Column(modifier = Modifier.padding(Spacing.md)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = cleanAndroidUri(credential.website),
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                        modifier = Modifier.weight(1f),
-                                        maxLines = 3,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Row {
-                                        IconButton(onClick = {
-                                            val uriStr = "passvault://import?" +
-                                                     "website=${Uri.encode(cleanAndroidUri(credential.website))}&" +
-                                                     "username=${Uri.encode(credential.username)}&" +
-                                                     "password=${Uri.encode(credential.password)}&" +
-                                                     "notes=${Uri.encode(credential.notes)}"
-                                            viewingQrCode = uriStr
-                                        }) {
-                                            Icon(Icons.Default.QrCode, contentDescription = "Export to QR", tint = Color.White.copy(alpha = 0.7f))
-                                        }
-                                        IconButton(onClick = { editingCredential = credential }) {
-                                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color.White.copy(alpha = 0.7f))
-                                        }
-                                        IconButton(onClick = {
-                                            coroutineScope.launch {
-                                                credentialDao.delete(credential)
-                                                Toast.makeText(context, "Deleted ${cleanAndroidUri(credential.website)}", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }) {
-                                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFD32F2F))
-                                        }
+                                    InitialAvatar(name = displayName)
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = displayName,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = credential.username,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    IconButton(onClick = {
+                                        val uriStr = "passvault://import?" +
+                                                 "website=${Uri.encode(cleanAndroidUri(credential.website))}&" +
+                                                 "username=${Uri.encode(credential.username)}&" +
+                                                 "password=${Uri.encode(credential.password)}&" +
+                                                 "notes=${Uri.encode(credential.notes)}"
+                                        viewingQrCode = uriStr
+                                    }) {
+                                        Icon(Icons.Default.QrCode, contentDescription = "Share as QR code")
+                                    }
+                                    IconButton(onClick = { editingCredential = credential }) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit credential")
+                                    }
+                                    IconButton(onClick = { pendingDelete = credential }) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "Delete credential",
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
 
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = "Username: ${credential.username}",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = Color.White.copy(alpha = 0.7f),
-                                            maxLines = 2,
+                                            text = "Password",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = if (passwordVisible) credential.password else "••••••••",
+                                            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = "Password: ",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = Color.White.copy(alpha = 0.7f)
-                                            )
-                                            Text(
-                                                text = if (passwordVisible) credential.password else "••••••••",
-                                                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF00E5FF),
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
                                     }
-                                    Row {
-                                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                            Icon(
-                                                imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                                contentDescription = "Toggle Visibility",
-                                                tint = Color.White.copy(alpha = 0.7f)
-                                            )
-                                        }
-                                        IconButton(onClick = { copyToClipboard("Password", credential.password) }) {
-                                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy Password", tint = Color.White.copy(alpha = 0.7f))
-                                        }
+                                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                        Icon(
+                                            imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                            contentDescription = if (passwordVisible) "Hide password" else "Show password"
+                                        )
+                                    }
+                                    IconButton(onClick = { copyToClipboard("Password", credential.password) }) {
+                                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy password")
                                     }
                                 }
 
                                 if (credential.notes.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(Spacing.sm))
                                     Text(
-                                        text = "Notes: ${credential.notes}",
+                                        text = credential.notes,
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = Color.White.copy(alpha = 0.5f)
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -532,16 +550,22 @@ fun ManagerScreen(
             }
         }
 
+        // Copy feedback
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(start = Spacing.screen, end = Spacing.screen, bottom = 88.dp)
+        )
+
         // Add Floating Action Button
         FloatingActionButton(
             onClick = { showAddDialog = true },
-            containerColor = Color(0xFF0D6EFD),
-            contentColor = Color.White,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(24.dp)
+                .padding(Spacing.lg)
         ) {
-            Icon(Icons.Default.Add, contentDescription = "Add Credential")
+            Icon(Icons.Default.Add, contentDescription = "Add credential")
         }
 
         // Add / Edit Dialog Builder
@@ -577,6 +601,7 @@ fun ManagerScreen(
                             onValueChange = { username = it },
                             label = { Text("Username / Email") },
                             singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                             modifier = Modifier.fillMaxWidth()
                         )
                         
@@ -590,11 +615,12 @@ fun ManagerScreen(
                                 label = { Text("Password") },
                                 singleLine = true,
                                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                                 trailingIcon = {
                                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                         Icon(
-                                            imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                            contentDescription = null
+                                            imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                            contentDescription = if (passwordVisible) "Hide password" else "Show password"
                                         )
                                     }
                                 },
@@ -667,19 +693,24 @@ fun ManagerScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         if (bitmap != null) {
-                            Image(
-                                bitmap = bitmap.asImageBitmap(),
-                                contentDescription = "Login QR Code",
+                            // White quiet-zone keeps the code scannable in dark theme
+                            Box(
                                 modifier = Modifier
-                                    .size(240.dp)
-                                    .padding(8.dp)
-                            )
+                                    .background(Color.White, RoundedCornerShape(12.dp))
+                                    .padding(12.dp)
+                            ) {
+                                Image(
+                                    bitmap = bitmap.asImageBitmap(),
+                                    contentDescription = "Login QR Code",
+                                    modifier = Modifier.size(220.dp)
+                                )
+                            }
                         } else {
                             Text("Failed to generate QR Code")
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Scan this QR code inside AegisPass Password Manager on another device to instantly import this credential.",
+                            text = "Scan this QR code inside Z+ Secure on another device to instantly import this credential. Anyone who scans it gets this password — only share it in person.",
                             style = MaterialTheme.typography.bodySmall,
                             textAlign = TextAlign.Center
                         )
@@ -688,6 +719,41 @@ fun ManagerScreen(
                 confirmButton = {
                     Button(onClick = { viewingQrCode = null }) {
                         Text("Done")
+                    }
+                }
+            )
+        }
+
+        // Delete confirmation — deleting a credential is irreversible
+        if (pendingDelete != null) {
+            val target = pendingDelete!!
+            AlertDialog(
+                onDismissRequest = { pendingDelete = null },
+                icon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                title = { Text("Delete this credential?") },
+                text = {
+                    Text("The login for ${cleanAndroidUri(target.website)} (${target.username}) will be permanently deleted. This can't be undone.")
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                credentialDao.delete(target)
+                                pendingDelete = null
+                                snackbarHostState.showSnackbar("Deleted ${cleanAndroidUri(target.website)}")
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        )
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDelete = null }) {
+                        Text("Cancel")
                     }
                 }
             )
