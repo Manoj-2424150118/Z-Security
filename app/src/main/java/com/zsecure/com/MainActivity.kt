@@ -88,16 +88,25 @@ class MainActivity : FragmentActivity() {
                         UnlockScreen(
                             activity = this@MainActivity,
                             onUnlocked = { derivedKey ->
-                                // Cache the derived key as hex inside EncryptedSharedPreferences for biometric convenience
-                                val securePrefs = CryptoUtils.getEncryptedSharedPreferences(this@MainActivity)
-                                val keyHex = derivedKey.joinToString("") { String.format("%02x", it) }
-                                securePrefs.edit()
-                                    .putString("cached_key_hex", keyHex)
-                                    .apply()
-
-                                DatabaseProvider.initialize(this@MainActivity, derivedKey)
-                                CryptoUtils.clearArray(derivedKey) // Wipe derived key from memory
-                                isUnlocked = true
+                                try {
+                                    DatabaseProvider.initialize(this@MainActivity, derivedKey)
+                                    // Only cache the derived key for biometric unlock when the
+                                    // user has explicitly opted in (Settings > Biometric unlock).
+                                    val securePrefs = CryptoUtils.getEncryptedSharedPreferences(this@MainActivity)
+                                    if (securePrefs.getBoolean("biometric_unlock_enabled", false)) {
+                                        val keyHex = derivedKey.joinToString("") { String.format("%02x", it) }
+                                        securePrefs.edit()
+                                            .putString("cached_key_hex", keyHex)
+                                            .apply()
+                                    }
+                                    isUnlocked = true
+                                } catch (e: Exception) {
+                                    // Vault could not be opened (e.g. corrupt file). Stay on the
+                                    // unlock screen instead of crashing or wiping data.
+                                    isUnlocked = false
+                                } finally {
+                                    CryptoUtils.clearArray(derivedKey) // Wipe derived key from memory
+                                }
                             }
                         )
                     }
@@ -154,6 +163,9 @@ class MainActivity : FragmentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        DatabaseProvider.lock()
+        // Do NOT lock here: onDestroy also runs for configuration changes
+        // (e.g. rotation), which would force a full re-unlock and drop the
+        // in-memory session even though the user never left the app.
+        // Locking is handled by onStop() when lock_on_close is enabled.
     }
 }

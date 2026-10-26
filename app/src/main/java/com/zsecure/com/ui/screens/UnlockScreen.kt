@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.zsecure.com.R
+import com.zsecure.com.data.DatabaseProvider
 import com.zsecure.com.utils.CryptoUtils
 import java.io.File
 import kotlinx.coroutines.delay
@@ -109,27 +110,44 @@ fun UnlockScreen(
             val verificationSaltHexStr = verificationSalt.joinToString("") { String.format("%02x", it) }
             val verificationHashHexStr = verificationHash.joinToString("") { String.format("%02x", it) }
 
+            // commit() (not apply()): if the process dies before an async apply()
+            // flushes, the salt/verifier are lost while the DB file survives,
+            // leaving a vault that can never be unlocked again.
+            // Creating the master password is also the explicit opt-in that
+            // enables biometric unlock (the derived key gets cached on unlock).
             sharedPrefs.edit()
                 .putString("salt_hex", saltHexStr)
                 .putString("ver_salt_hex", verificationSaltHexStr)
                 .putString("key_hash_check", verificationHashHexStr)
+                .putInt("pbkdf2_iterations", CryptoUtils.ITERATIONS)
+                .putBoolean("biometric_unlock_enabled", true)
                 .putInt("failed_attempts", 0)
                 .putLong("cooldown_unlock_timestamp", 0L)
-                .apply()
+                .commit()
 
             failedAttempts = 0
             onUnlocked(derivedKey)
         } else {
             // Decrypt & Verify vault
-            val salt = saltHex!!.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-            val verSaltHex = sharedPrefs.getString("ver_salt_hex", null)!!
+            val verSaltHex = sharedPrefs.getString("ver_salt_hex", null)
+            if (saltHex == null || verSaltHex == null) {
+                // Previously this crashed with an NPE (ver_salt_hex!!) whenever
+                // part of the stored setup data was missing.
+                errorText = "Stored vault data is incomplete. The app's secure storage may have been cleared."
+                return
+            }
+            val salt = saltHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
             val verSalt = verSaltHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
             
+            // Vaults created before the PBKDF2 cost upgrade store their
+            // iteration count (absent = legacy 65,536); derive with the STORED
+            // count so existing users can still unlock.
+            val storedIterations = sharedPrefs.getInt("pbkdf2_iterations", CryptoUtils.LEGACY_ITERATIONS)
             val passwordChars = password.toCharArray()
-            val derivedKey = CryptoUtils.deriveKey(passwordChars, salt)
-            val verificationHash = CryptoUtils.deriveKey(passwordChars, verSalt)
+            val derivedKey = CryptoUtils.deriveKey(passwordChars, salt, storedIterations)
+            val verificationHash = CryptoUtils.deriveKey(passwordChars, verSalt, storedIterations)
             CryptoUtils.clearArray(passwordChars) // Memory Safety: wipe password CharArray!
-            
+
             val verificationHashHexStr = verificationHash.joinToString("") { String.format("%02x", it) }
 
             if (verificationHashHexStr == keyHashCheckHex) {
@@ -138,6 +156,35 @@ fun UnlockScreen(
                     .putLong("cooldown_unlock_timestamp", 0L)
                     .apply()
                 failedAttempts = 0
+
+                if (storedIterations < CryptoUtils.ITERATIONS) {
+                    // Transparent cost upgrade: re-derive at the current
+                    // iteration count, rekey the vault, and store the new
+                    // verifier. If anything fails, fall back to unlocking with
+                    // the old key — migration is retried on the next unlock.
+                    try {
+                        val migrationChars = password.toCharArray()
+                        val upgradedKey = CryptoUtils.deriveKey(migrationChars, salt, CryptoUtils.ITERATIONS)
+                        val upgradedVerifier = CryptoUtils.deriveKey(migrationChars, verSalt, CryptoUtils.ITERATIONS)
+                        CryptoUtils.clearArray(migrationChars)
+
+                        DatabaseProvider.initialize(activity, derivedKey) // open with the old key
+                        DatabaseProvider.rekey(activity, upgradedKey)
+
+                        sharedPrefs.edit()
+                            .putString(
+                                "key_hash_check",
+                                upgradedVerifier.joinToString("") { String.format("%02x", it) }
+                            )
+                            .putInt("pbkdf2_iterations", CryptoUtils.ITERATIONS)
+                            .commit()
+
+                        onUnlocked(upgradedKey)
+                        return
+                    } catch (e: Exception) {
+                        // fall through to a normal unlock with the old key
+                    }
+                }
                 onUnlocked(derivedKey)
             } else {
                 failedAttempts++

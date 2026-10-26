@@ -17,7 +17,15 @@ import javax.crypto.spec.PBEKeySpec
 
 object CryptoUtils {
 
-    private const val ITERATIONS = 65536
+    /** Iteration count used by vaults created before the cost upgrade. */
+    const val LEGACY_ITERATIONS = 65_536
+
+    /**
+     * Current PBKDF2 cost (OWASP-aligned for HMAC-SHA256). Existing vaults are
+     * migrated transparently at unlock: the stored iteration count lives in
+     * the "pbkdf2_iterations" preference (absent = LEGACY_ITERATIONS).
+     */
+    const val ITERATIONS = 310_000
     private const val KEY_LENGTH = 256 // in bits
     private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
     private const val MASTER_KEY_ALIAS = "zsecure_master_key"
@@ -36,16 +44,18 @@ object CryptoUtils {
      * Derives a cryptographic key from a password and salt using PBKDF2.
      * Clears Spec password immediately for memory safety.
      */
-    fun deriveKey(password: CharArray, salt: ByteArray): ByteArray {
-        val spec = PBEKeySpec(password, salt, ITERATIONS, KEY_LENGTH)
+    fun deriveKey(password: CharArray, salt: ByteArray, iterations: Int = ITERATIONS): ByteArray {
+        val spec = PBEKeySpec(password, salt, iterations, KEY_LENGTH)
         return try {
             val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
             val secretKey = factory.generateSecret(spec)
             secretKey.encoded
         } catch (e: NoSuchAlgorithmException) {
-            byteArrayOf()
+            // Fail closed: previously this returned an EMPTY key, which later
+            // crashed key formatting or produced a garbage vault key.
+            throw IllegalStateException("PBKDF2WithHmacSHA256 unavailable", e)
         } catch (e: InvalidKeySpecException) {
-            byteArrayOf()
+            throw IllegalStateException("Invalid PBKDF2 parameters", e)
         } finally {
             spec.clearPassword()
         }
@@ -53,14 +63,16 @@ object CryptoUtils {
 
     /**
      * Obtains EncryptedSharedPreferences backed by Android Keystore.
-     * Falls back to private SharedPreferences if Keystore fails.
+     * Fails closed: the previous silent fallback to PLAINTEXT SharedPreferences
+     * could store the salt, verifier and even the cached vault key unencrypted
+     * (in a different file, which also made stored values appear to vanish).
      */
     fun getEncryptedSharedPreferences(context: Context): SharedPreferences {
         return try {
             val masterKey = MasterKey.Builder(context)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                 .build()
-            
+
             EncryptedSharedPreferences.create(
                 context,
                 "aegispass_secure_prefs",
@@ -69,7 +81,7 @@ object CryptoUtils {
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
         } catch (e: Exception) {
-            context.getSharedPreferences("aegispass_secure_prefs_fallback", Context.MODE_PRIVATE)
+            throw IllegalStateException("Secure preferences unavailable (Keystore error)", e)
         }
     }
 

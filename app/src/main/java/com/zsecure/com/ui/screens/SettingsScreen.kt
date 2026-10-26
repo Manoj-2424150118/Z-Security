@@ -347,24 +347,38 @@ fun SettingsScreen(
                         }
                         
                         try {
-                            val salt = saltHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-                            val verSaltHex = sharedPrefs.getString("ver_salt_hex", null)!!
+                            val verSaltHex = sharedPrefs.getString("ver_salt_hex", null)
+                            if (verSaltHex == null) {
+                                verifyError = "Stored verification data is missing. Vault settings may be corrupted."
+                                return@Button
+                            }
                             val verSalt = verSaltHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-                            
-                            val derivedKey = CryptoUtils.deriveKey(verifyPassword.toCharArray(), salt)
-                            val verificationHash = CryptoUtils.deriveKey(verifyPassword.toCharArray(), verSalt)
+
+                            // Verify with the vault's STORED iteration count (older
+                            // vaults predate the PBKDF2 cost upgrade)
+                            val storedIterations = sharedPrefs.getInt("pbkdf2_iterations", CryptoUtils.LEGACY_ITERATIONS)
+                            val verificationHash = CryptoUtils.deriveKey(verifyPassword.toCharArray(), verSalt, storedIterations)
                             val verificationHashHexStr = verificationHash.joinToString("") { String.format("%02x", it) }
                             
                             if (verificationHashHexStr == keyHashCheckHex) {
-                                // Rekey vault from current user master key to default static key
-                                DatabaseProvider.rekey(context, derivedKey, DatabaseProvider.DEFAULT_KEY)
-                                
-                                // Re-initialize db with default key
-                                DatabaseProvider.initialize(context, DatabaseProvider.DEFAULT_KEY)
-                                
+                                // Rekey the vault from the user's master key to a fresh RANDOM
+                                // device-local key, stored in EncryptedSharedPreferences as
+                                // auto_unlock_key_hex (the same mechanism MainActivity uses when
+                                // lock_on_close is off). NEVER rekey to a constant: the previous
+                                // code used a published static key, leaving the vault readable by
+                                // anyone with the app source.
+                                val autoKey = ByteArray(32)
+                                java.security.SecureRandom().nextBytes(autoKey)
+                                DatabaseProvider.rekey(context, autoKey)
+                                DatabaseProvider.initialize(context, autoKey)
+                                val autoKeyHex = autoKey.joinToString("") { String.format("%02x", it) }
+                                CryptoUtils.clearArray(autoKey)
+
                                 // Delete secure settings in preferences
                                 sharedPrefs.edit()
                                     .putBoolean("lock_on_close", false)
+                                    .putString("auto_unlock_key_hex", autoKeyHex)
+                                    .putBoolean("biometric_unlock_enabled", false)
                                     .remove("salt_hex")
                                     .remove("ver_salt_hex")
                                     .remove("key_hash_check")
@@ -475,15 +489,19 @@ fun SettingsScreen(
                             val verificationSaltHexStr = verificationSalt.joinToString("") { String.format("%02x", it) }
                             val verificationHashHexStr = verificationHash.joinToString("") { String.format("%02x", it) }
                             
-                            // Rekey vault from current default static key to user's new custom key
-                            DatabaseProvider.rekey(context, DatabaseProvider.DEFAULT_KEY, derivedKey)
+                            // Rekey vault from the current (random auto-unlock) key to user's new custom key
+                            DatabaseProvider.rekey(context, derivedKey)
                             
                             // Re-initialize Room with the user's custom key
                             DatabaseProvider.initialize(context, derivedKey)
                             
-                            // Save secure configs to preferences
+                            // Save secure configs to preferences. Setting up protection is
+                            // the explicit opt-in that enables biometric unlock + key cache.
                             sharedPrefs.edit()
                                 .putBoolean("lock_on_close", true)
+                                .putBoolean("biometric_unlock_enabled", true)
+                                .putInt("pbkdf2_iterations", CryptoUtils.ITERATIONS)
+                                .remove("auto_unlock_key_hex")
                                 .putString("salt_hex", saltHexStr)
                                 .putString("ver_salt_hex", verificationSaltHexStr)
                                 .putString("key_hash_check", verificationHashHexStr)
