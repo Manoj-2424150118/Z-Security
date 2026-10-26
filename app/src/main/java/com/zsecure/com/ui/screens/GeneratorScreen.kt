@@ -18,10 +18,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
+import com.zsecure.com.ui.theme.Spacing
+import com.zsecure.com.ui.theme.StrengthMedium
+import com.zsecure.com.ui.theme.StrengthStrong
+import com.zsecure.com.ui.theme.StrengthVeryStrong
+import com.zsecure.com.ui.theme.StrengthVeryWeak
+import com.zsecure.com.ui.theme.StrengthWeak
 import androidx.compose.ui.platform.LocalHapticFeedback
 import kotlinx.coroutines.launch
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -46,6 +52,8 @@ fun GeneratorScreen() {
 
     var generatedPassword by remember { mutableStateOf("") }
     val history = remember { mutableStateListOf<String>() }
+    val snackbarHostState = remember { SnackbarHostState() }
+    var showClearHistoryConfirm by remember { mutableStateOf(false) }
 
     fun generate() {
         val upperChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -135,21 +143,23 @@ fun GeneratorScreen() {
 
     val entropy = if (poolSize > 0) length.toInt() * (Math.log(poolSize.toDouble()) / Math.log(2.0)) else 0.0
 
-    // Strength ratings & color configurations
-    val (strengthLabel, barColor, textColor) = when {
-        entropy < 28.0 -> Triple("Very Weak", Color(0xFFE57373), Color.White) // Red
-        entropy < 36.0 -> Triple("Weak", Color(0xFFFFB74D), Color.Black)      // Orange
-        entropy < 60.0 -> Triple("Medium", Color(0xFFFFF176), Color.Black)    // Yellow
-        entropy < 128.0 -> Triple("Strong", Color(0xFF81C784), Color.Black)   // Green
-        else -> Triple("Very Strong", Color(0xFF2E7D32), Color.White)         // Dark Green
+    // Strength rating + semantic colour (thresholds unchanged)
+    val (strengthLabel, barColor) = when {
+        entropy < 28.0 -> "Very Weak" to StrengthVeryWeak
+        entropy < 36.0 -> "Weak" to StrengthWeak
+        entropy < 60.0 -> "Medium" to StrengthMedium
+        entropy < 128.0 -> "Strong" to StrengthStrong
+        else -> "Very Strong" to StrengthVeryStrong
     }
 
     fun copyToClipboard(text: String) {
         if (text.isEmpty()) return
         val clip = ClipData.newPlainText("Generated Password", text)
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(context, "Password copied to clipboard!", Toast.LENGTH_SHORT).show()
-        
+        coroutineScope.launch {
+            snackbarHostState.showSnackbar("Password copied — clipboard clears in 45 seconds")
+        }
+
         coroutineScope.launch {
             kotlinx.coroutines.delay(45000)
             try {
@@ -167,18 +177,21 @@ fun GeneratorScreen() {
         }
     }
 
+  Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(Spacing.screen),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
         // Password Display Card
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF131A26)),
-            shape = RoundedCornerShape(16.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            ),
+            shape = MaterialTheme.shapes.large,
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
             Column(
                 modifier = Modifier.padding(20.dp),
@@ -189,104 +202,102 @@ fun GeneratorScreen() {
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
-                        color = if (generatedPassword.isEmpty()) Color.White.copy(alpha = 0.3f) else Color.White
+                        color = if (generatedPassword.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
                     ),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
                 )
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
+
+                Spacer(modifier = Modifier.height(Spacing.md))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     Button(
                         onClick = { generate() },
-                        enabled = poolSize > 0,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF0D6EFD),
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(10.dp)
+                        enabled = poolSize > 0
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Regenerate")
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Generate", fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.Refresh, contentDescription = null)
+                        Spacer(modifier = Modifier.width(Spacing.sm))
+                        Text("Generate")
                     }
-                    
+
                     OutlinedButton(
                         onClick = { copyToClipboard(generatedPassword) },
-                        enabled = generatedPassword.isNotEmpty(),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Color(0xFF00E5FF)
-                        ),
-                        border = ButtonDefaults.outlinedButtonBorder.copy(
-                            brush = Brush.sweepGradient(colors = listOf(Color(0xFF00E5FF), Color(0xFF0D6EFD)))
-                        ),
-                        shape = RoundedCornerShape(10.dp)
+                        enabled = generatedPassword.isNotEmpty()
                     ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy")
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Copy", fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.ContentCopy, contentDescription = null)
+                        Spacer(modifier = Modifier.width(Spacing.sm))
+                        Text("Copy")
                     }
                 }
             }
         }
 
-        // Strength Indicator Bar with dynamic high-contrast text color
+        // Strength meter — animated progress with label + entropy
         if (generatedPassword.isNotEmpty()) {
             val progress = (entropy / 150.0).coerceIn(0.0, 1.0).toFloat()
+            val animatedProgress by animateFloatAsState(
+                targetValue = progress,
+                label = "strengthProgress"
+            )
             Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "Entropy: ${String.format("%.1f", entropy)} bits",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.6f),
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(32.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF202B3C)),
-                    contentAlignment = Alignment.CenterStart
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(progress)
-                            .fillMaxHeight()
-                            .background(barColor)
-                    )
-                    
                     Text(
-                        text = "$strengthLabel (${String.format("%.1f", entropy)} bits)",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                        color = textColor,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
+                        text = strengthLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = barColor
+                    )
+                    Text(
+                        text = "${String.format("%.1f", entropy)} bits of entropy",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                Spacer(modifier = Modifier.height(Spacing.sm))
+                LinearProgressIndicator(
+                    progress = { animatedProgress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(MaterialTheme.shapes.extraSmall),
+                    color = barColor,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
             }
         }
 
         // Customization Controls Card
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF131A26)),
-            shape = RoundedCornerShape(16.dp)
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            ),
+            shape = MaterialTheme.shapes.large
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.padding(Spacing.md),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = "Length: ${length.toInt()}",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Length",
+                        style = MaterialTheme.typography.titleMedium
                     )
-                )
+                    AssistChip(
+                        onClick = { },
+                        label = { Text("${length.toInt()} characters") }
+                    )
+                }
                 Slider(
                     value = length,
                     onValueChange = { newValue ->
@@ -299,69 +310,36 @@ fun GeneratorScreen() {
                         generate()
                     },
                     valueRange = 4f..64f,
-                    steps = 60,
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color(0xFF00E5FF),
-                        activeTrackColor = Color(0xFF00E5FF),
-                        inactiveTrackColor = Color.White.copy(alpha = 0.1f)
-                    )
+                    steps = 60
                 )
 
-                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+                HorizontalDivider()
 
-                // Checkbox Options
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { includeUpper = !includeUpper; generate() },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(
-                        checked = includeUpper,
-                        onCheckedChange = { includeUpper = it; generate() },
-                        colors = CheckboxDefaults.colors(checkedColor = Color(0xFF00E5FF))
-                    )
-                    Text("Uppercase (A-Z)", color = Color.White)
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { includeLower = !includeLower; generate() },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(
-                        checked = includeLower,
-                        onCheckedChange = { includeLower = it; generate() },
-                        colors = CheckboxDefaults.colors(checkedColor = Color(0xFF00E5FF))
-                    )
-                    Text("Lowercase (a-z)", color = Color.White)
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { includeNumbers = !includeNumbers; generate() },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(
-                        checked = includeNumbers,
-                        onCheckedChange = { includeNumbers = it; generate() },
-                        colors = CheckboxDefaults.colors(checkedColor = Color(0xFF00E5FF))
-                    )
-                    Text("Numbers (0-9)", color = Color.White)
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { includeSymbols = !includeSymbols; generate() },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(
-                        checked = includeSymbols,
-                        onCheckedChange = { includeSymbols = it; generate() },
-                        colors = CheckboxDefaults.colors(checkedColor = Color(0xFF00E5FF))
-                    )
-                    Text("Symbols (!@#$)", color = Color.White)
-                }
+                // Character-set switches (whole row is the touch target)
+                CharacterSetRow(
+                    label = "Uppercase",
+                    example = "ABC",
+                    checked = includeUpper,
+                    onCheckedChange = { includeUpper = it; generate() }
+                )
+                CharacterSetRow(
+                    label = "Lowercase",
+                    example = "abc",
+                    checked = includeLower,
+                    onCheckedChange = { includeLower = it; generate() }
+                )
+                CharacterSetRow(
+                    label = "Numbers",
+                    example = "123",
+                    checked = includeNumbers,
+                    onCheckedChange = { includeNumbers = it; generate() }
+                )
+                CharacterSetRow(
+                    label = "Symbols",
+                    example = "!@#",
+                    checked = includeSymbols,
+                    onCheckedChange = { includeSymbols = it; generate() }
+                )
             }
         }
 
@@ -371,43 +349,49 @@ fun GeneratorScreen() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF131A26)),
-                shape = RoundedCornerShape(16.dp)
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                ),
+                shape = MaterialTheme.shapes.large
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(Spacing.md)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "History (Tap to copy)",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
+                        Column {
+                            Text(
+                                text = "History",
+                                style = MaterialTheme.typography.titleMedium
                             )
-                        )
+                            Text(
+                                text = "This session only — tap to copy",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         IconButton(
-                            onClick = { history.clear() }
+                            onClick = { showClearHistoryConfirm = true }
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
-                                contentDescription = "Clear History",
-                                tint = Color(0xFFD32F2F)
+                                contentDescription = "Clear history",
+                                tint = MaterialTheme.colorScheme.error
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(Spacing.sm))
                     LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(history) { pastPassword ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFF1B2433))
+                                    .clip(MaterialTheme.shapes.small)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
                                     .clickable { copyToClipboard(pastPassword) }
                                     .padding(12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -417,13 +401,14 @@ fun GeneratorScreen() {
                                     text = pastPassword,
                                     fontFamily = FontFamily.Monospace,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.White
+                                    maxLines = 1,
+                                    modifier = Modifier.weight(1f)
                                 )
                                 Icon(
                                     imageVector = Icons.Default.ContentCopy,
-                                    contentDescription = "Copy Icon",
-                                    tint = Color.White.copy(alpha = 0.5f),
-                                    modifier = Modifier.size(16.dp)
+                                    contentDescription = "Copy this password",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
@@ -431,5 +416,72 @@ fun GeneratorScreen() {
                 }
             }
         }
+    }
+
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(Spacing.screen)
+    )
+  }
+
+  // Clear-history confirmation
+  if (showClearHistoryConfirm) {
+      AlertDialog(
+          onDismissRequest = { showClearHistoryConfirm = false },
+          icon = { Icon(Icons.Default.Delete, contentDescription = null) },
+          title = { Text("Clear generator history?") },
+          text = { Text("The ${history.size} passwords generated this session will be removed. Anything you still need should be copied or saved in your vault first.") },
+          confirmButton = {
+              Button(
+                  onClick = {
+                      history.clear()
+                      showClearHistoryConfirm = false
+                  },
+                  colors = ButtonDefaults.buttonColors(
+                      containerColor = MaterialTheme.colorScheme.error,
+                      contentColor = MaterialTheme.colorScheme.onError
+                  )
+              ) {
+                  Text("Clear")
+              }
+          },
+          dismissButton = {
+              TextButton(onClick = { showClearHistoryConfirm = false }) {
+                  Text("Cancel")
+              }
+          }
+      )
+  }
+}
+
+/** One character-set row: label + example, switch on the right, whole row toggles. */
+@Composable
+private fun CharacterSetRow(
+    label: String,
+    example: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = label, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = example,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
     }
 }
