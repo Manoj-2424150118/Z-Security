@@ -3,15 +3,18 @@ package com.zsecure.com.ui.screens
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.res.painterResource
+import com.zsecure.com.BuildConfig
 import com.zsecure.com.R
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -19,16 +22,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.zsecure.com.data.DatabaseProvider
+import com.zsecure.com.ui.theme.Spacing
 import com.zsecure.com.utils.CryptoUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,16 +63,18 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0A0E17)) // World class deep-dark space theme background
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(Spacing.screen),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
         // App Header Branding Card
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF131A26)),
-            shape = RoundedCornerShape(16.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            ),
+            shape = MaterialTheme.shapes.large,
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
             Column(
                 modifier = Modifier
@@ -78,51 +82,52 @@ fun SettingsScreen(
                     .padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Cropped app launcher icon
                 Image(
                     painter = painterResource(id = R.drawable.app_logo),
-                    contentDescription = "Z+ Secure Logo",
+                    contentDescription = "Z+ Secure logo",
                     modifier = Modifier
                         .size(60.dp)
                         .clip(RoundedCornerShape(12.dp))
                 )
-                
+
                 Spacer(modifier = Modifier.height(12.dp))
-                
+
                 Text(
                     text = "Z+ Secure",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    style = MaterialTheme.typography.titleLarge
                 )
                 Text(
-                    text = "Version 1.0.0 (Premium Vault)",
-                    fontSize = 12.sp,
-                    color = Color(0xFF00E5FF),
+                    text = "Encrypted vault & authenticator",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "Version ${BuildConfig.VERSION_NAME}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold
                 )
             }
         }
 
-        // Section Title: Security Settings
+        // Section: Security
         Text(
-            text = "Security Configuration",
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontWeight = FontWeight.Bold,
-                color = Color.White.copy(alpha = 0.8f)
-            ),
-            modifier = Modifier.padding(start = 4.dp, top = 8.dp)
+            text = "Security",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 4.dp, top = Spacing.sm)
         )
 
-        // Security Card
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF131A26)),
-            shape = RoundedCornerShape(16.dp)
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            ),
+            shape = MaterialTheme.shapes.large
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                modifier = Modifier.padding(Spacing.md),
+                verticalArrangement = Arrangement.spacedBy(Spacing.md)
             ) {
                 // Lock on Close Toggle
                 Row(
@@ -137,21 +142,20 @@ fun SettingsScreen(
                         Icon(
                             imageVector = Icons.Default.Lock,
                             contentDescription = null,
-                            tint = Color(0xFF00E5FF),
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "Lock on App Close",
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                fontSize = 15.sp
+                                text = "Lock on app close",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                text = "Instantly lock vault when minimizing the app",
-                                color = Color.White.copy(alpha = 0.5f),
-                                fontSize = 11.sp
+                                text = "Lock the vault as soon as you leave the app",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -172,19 +176,13 @@ fun SettingsScreen(
                                 setupPasswordVisible = false
                                 showSetupDialog = true
                             }
-                        },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = Color(0xFF00E5FF),
-                            uncheckedThumbColor = Color.Gray,
-                            uncheckedTrackColor = Color.Black.copy(alpha = 0.4f)
-                        )
+                        }
                     )
                 }
 
-                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+                HorizontalDivider()
 
-                // Biometrics Display / Config Info
+                // Biometrics status / config
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -195,23 +193,22 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Security,
+                            imageVector = Icons.Default.Fingerprint,
                             contentDescription = null,
-                            tint = Color(0xFF00E5FF),
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "Biometric Lock Cache",
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                fontSize = 15.sp
+                                text = "Biometric unlock",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                text = if (biometricEnabled) "Biometric Unlock is configured and ready" else "Setup key first to cache biometrics",
-                                color = Color.White.copy(alpha = 0.5f),
-                                fontSize = 11.sp
+                                text = if (biometricEnabled) "Ready — your key is cached for fingerprint unlock" else "Turns on when you set a master password",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -225,36 +222,28 @@ fun SettingsScreen(
                         ) {
                             Text("Clear", color = MaterialTheme.colorScheme.error)
                         }
-                    } else {
-                        Text(
-                            text = "Auto-on",
-                            color = Color(0xFF00E5FF),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
                     }
                 }
             }
         }
 
-        // Section Title: Vault Actions
+        // Section: Vault
         Text(
-            text = "Vault Protection",
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontWeight = FontWeight.Bold,
-                color = Color.White.copy(alpha = 0.8f)
-            ),
-            modifier = Modifier.padding(start = 4.dp, top = 8.dp)
+            text = "Vault",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 4.dp, top = Spacing.sm)
         )
 
-        // Actions Card
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF131A26)),
-            shape = RoundedCornerShape(16.dp)
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            ),
+            shape = MaterialTheme.shapes.large
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.padding(Spacing.md),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Button(
@@ -263,11 +252,21 @@ fun SettingsScreen(
                         onLock()
                     },
                     enabled = lockOnClose, // Only manual lock if lock option is on!
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
-                    shape = RoundedCornerShape(12.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
                 ) {
-                    Text("Lock Database Instantly", color = Color.White, fontWeight = FontWeight.Bold)
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(Spacing.sm))
+                    Text("Lock vault now")
                 }
 
                 Row(
@@ -280,14 +279,14 @@ fun SettingsScreen(
                     Icon(
                         imageVector = Icons.Default.Info,
                         contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.4f),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Z+ Secure utilizes AES-256 local encryption.",
-                        color = Color.White.copy(alpha = 0.4f),
-                        fontSize = 11.sp,
+                        text = "Vault encrypted at rest with SQLCipher (AES-256); keys derived with PBKDF2.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
                     )
                 }
@@ -299,39 +298,32 @@ fun SettingsScreen(
     if (showVerifyDialog) {
         AlertDialog(
             onDismissRequest = { showVerifyDialog = false },
-            title = { Text("Disable App Protection", color = Color.White) },
-            containerColor = Color(0xFF131A26),
+            icon = { Icon(Icons.Default.Lock, contentDescription = null) },
+            title = { Text("Disable app protection?") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Verify your Master Password to decrypt your vault and disable auto-lock.",
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 14.sp
+                        text = "Verify your master password to disable auto-lock. Your vault will be re-encrypted with a device-local key so it stays encrypted at rest, but anyone holding your phone will be able to open it.",
+                        style = MaterialTheme.typography.bodyMedium
                     )
                     OutlinedTextField(
                         value = verifyPassword,
                         onValueChange = { verifyPassword = it; verifyError = "" },
-                        label = { Text("Master Password") },
+                        label = { Text("Master password") },
                         singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF00E5FF),
-                            unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                            focusedLabelColor = Color(0xFF00E5FF),
-                            unfocusedLabelColor = Color.White.copy(alpha = 0.4f)
-                        ),
+                        isError = verifyError.isNotEmpty(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         visualTransformation = if (verifyPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
-                            val icon = if (verifyPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                            val icon = if (verifyPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility
                             IconButton(onClick = { verifyPasswordVisible = !verifyPasswordVisible }) {
-                                Icon(icon, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
+                                Icon(icon, contentDescription = if (verifyPasswordVisible) "Hide password" else "Show password")
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
                     )
                     if (verifyError.isNotEmpty()) {
-                        Text(text = verifyError, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                        Text(text = verifyError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
@@ -396,14 +388,17 @@ fun SettingsScreen(
                             verifyError = "Verification failed: ${e.message}"
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
                 ) {
-                    Text("Disable Lock", color = Color.White)
+                    Text("Disable lock")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showVerifyDialog = false }) {
-                    Text("Cancel", color = Color.White.copy(alpha = 0.6f))
+                    Text("Cancel")
                 }
             }
         )
@@ -413,33 +408,27 @@ fun SettingsScreen(
     if (showSetupDialog) {
         AlertDialog(
             onDismissRequest = { showSetupDialog = false },
-            title = { Text("Enable App Protection", color = Color.White) },
-            containerColor = Color(0xFF131A26),
+            icon = { Icon(Icons.Default.Lock, contentDescription = null) },
+            title = { Text("Enable app protection") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Set up a new Master Password. This password will encrypt your local database.",
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 14.sp
+                        text = "Set a master password. It encrypts your vault on this device and cannot be recovered if forgotten.",
+                        style = MaterialTheme.typography.bodyMedium
                     )
                     OutlinedTextField(
                         value = setupPassword,
                         onValueChange = { setupPassword = it; setupError = "" },
-                        label = { Text("New Master Password") },
+                        label = { Text("New master password") },
                         singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF00E5FF),
-                            unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                            focusedLabelColor = Color(0xFF00E5FF),
-                            unfocusedLabelColor = Color.White.copy(alpha = 0.4f)
-                        ),
+                        isError = setupError.isNotEmpty(),
+                        supportingText = { Text("At least 8 characters") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         visualTransformation = if (setupPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
-                            val icon = if (setupPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                            val icon = if (setupPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility
                             IconButton(onClick = { setupPasswordVisible = !setupPasswordVisible }) {
-                                Icon(icon, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
+                                Icon(icon, contentDescription = if (setupPasswordVisible) "Hide password" else "Show password")
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -447,21 +436,15 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = confirmSetupPassword,
                         onValueChange = { confirmSetupPassword = it; setupError = "" },
-                        label = { Text("Confirm Master Password") },
+                        label = { Text("Confirm master password") },
                         singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF00E5FF),
-                            unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                            focusedLabelColor = Color(0xFF00E5FF),
-                            unfocusedLabelColor = Color.White.copy(alpha = 0.4f)
-                        ),
+                        isError = setupError.isNotEmpty(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         visualTransformation = if (setupPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth()
                     )
                     if (setupError.isNotEmpty()) {
-                        Text(text = setupError, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                        Text(text = setupError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
@@ -516,14 +499,13 @@ fun SettingsScreen(
                             setupError = "Configuration failed: ${e.message}"
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D6EFD))
                 ) {
-                    Text("Enable protection", color = Color.White)
+                    Text("Enable protection")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showSetupDialog = false }) {
-                    Text("Cancel", color = Color.White.copy(alpha = 0.6f))
+                    Text("Cancel")
                 }
             }
         )
