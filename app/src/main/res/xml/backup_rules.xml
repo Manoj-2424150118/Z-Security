@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pre-Android 12 backup rules. The vault must never leave the device via
+  Auto Backup, so every domain is excluded in full. (The manifest also
+  sets allowBackup=false; these rules are defence in depth and must stay
+  valid — lintVitalRelease treats a missing domain attribute as fatal.)
+-->
 <full-backup-content>
-    <exclude path="." />
+    <exclude domain="root" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="external" path="." />
 </full-backup-content>
