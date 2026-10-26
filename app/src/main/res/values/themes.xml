@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.AegisPass" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <!-- Framework Material parent: the app has no AppCompat dependency, so the
+         previous Theme.AppCompat parent could not be resolved at build time. -->
+    <style name="Theme.AegisPass" parent="android:Theme.Material.NoActionBar">
         <!-- Customize your theme here. -->
         <item name="android:statusBarColor">#121212</item>
         <item name="android:navigationBarColor">#121212</item>
