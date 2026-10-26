@@ -119,7 +119,9 @@ fun MainContainer(
             targetState = selectedTab,
             transitionSpec = { fadeIn() togetherWith fadeOut() },
             label = "tabContent",
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
         ) { tab ->
             when (tab) {
                 0 -> GeneratorScreen()
