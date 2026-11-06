@@ -51,6 +51,7 @@ import com.zsecure.com.ui.components.InitialAvatar
 import com.zsecure.com.ui.theme.Spacing
 import com.zsecure.com.utils.GoogleAuthDecoder
 import com.zsecure.com.utils.TotpUtils
+import com.zsecure.com.utils.filterTwoFactorAccounts
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -81,6 +82,7 @@ fun AuthenticatorScreen(
     var showCameraScanner by remember { mutableStateOf(false) }
     var showMigrationDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<TwoFactorAccount?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Run active loop for 2FA timer (1 s tick: codes change at most once per
@@ -316,7 +318,29 @@ fun AuthenticatorScreen(
                 }
             }
 
+            // Search — the vault has always had one; with more than a
+            // handful of issuers the Authenticator list needs it too.
+            if (accounts.isNotEmpty()) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search accounts") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear search")
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
             // List of Accounts
+            val visibleAccounts = filterTwoFactorAccounts(accounts, searchQuery)
             if (accounts.isEmpty()) {
                 EmptyState(
                     icon = Icons.Default.Timer,
@@ -328,6 +352,15 @@ fun AuthenticatorScreen(
                         .fillMaxWidth()
                         .weight(1f)
                 )
+            } else if (visibleAccounts.isEmpty()) {
+                EmptyState(
+                    icon = Icons.Default.SearchOff,
+                    title = "No accounts match \"$searchQuery\"",
+                    message = "Try a different issuer or account name.",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier
@@ -335,7 +368,7 @@ fun AuthenticatorScreen(
                         .weight(1f),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(accounts, key = { it.id }) { account ->
+                    items(visibleAccounts, key = { it.id }) { account ->
                         val rawCode = if (account.type == "HOTP") {
                             TotpUtils.generateHotp(account.secret, account.counter, account.digits, account.algorithm)
                         } else {
