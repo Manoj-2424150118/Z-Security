@@ -18,7 +18,7 @@ The app requests **no INTERNET permission** — the only runtime permissions are
 
 ## Download
 
-Signed release APKs are published on the [Releases](https://github.com/Manoj-2424150118/Z-Security/releases) page — latest: **[v1.2.0](https://github.com/Manoj-2424150118/Z-Security/releases/tag/v1.2.0)**. Releases from v1.1.0 onward are signed with a permanent release key, so updates install in place. Requires Android 8.0 (API 26) or newer.
+Signed release APKs are published on the [Releases](https://github.com/Manoj-2424150118/Z-Security/releases) page — latest: **[v1.2.1](https://github.com/Manoj-2424150118/Z-Security/releases/tag/v1.2.1)**. Releases from v1.1.0 onward are signed with a permanent release key, so updates install in place. Requires Android 8.0 (API 26) or newer.
 
 > **Upgrading from v1.0.x:** those builds used one-off debug keys, so Android will refuse an in-place update. Export your vault (Vault tab → export) and note your 2FA setup keys first — the old app has no 2FA export — then uninstall and reinstall.
 
