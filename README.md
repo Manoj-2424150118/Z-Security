@@ -70,7 +70,7 @@ flowchart TB
 | Unlock | AndroidX Biometric · master-password fallback · lockout countdown |
 | QR scanning | CameraX · ML Kit Barcode Scanning · ZXing core |
 | Platform | Android — minSdk 26 (Android 8.0), target/compileSdk 35 · AGP 8.5 · Gradle 8.7 |
-| Current release | v1.2.0 (versionCode 4) — authenticator search |
+| Current release | v1.2.1 tag (app build 1.2.0, versionCode 4) — authenticator search |
 
 ## Setup & build
 
